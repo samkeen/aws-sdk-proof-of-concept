@@ -1,10 +1,11 @@
 var Hapi = require('hapi');
 var Good = require('good');
 var AWS = require('aws-sdk');
+var config = require('./config');
 
-AWS.config.dynamodb = {
-    apiVersion: '2012-08-10',
-    region: 'us-west-2'
+AWS.config = {
+    apiVersion: config.awsSdkApiVersion,
+    region: config.awsAccountRegion
 };
 
 var server = new Hapi.Server();
@@ -20,6 +21,80 @@ server.route({
         dynamodb.listTables(function (error, data) {
             if (error) {
                 console.log(error); // error is Response.error
+            } else {
+                console.log(data); // data is Response.data
+                reply(data);
+            }
+        });
+
+    }
+});
+
+server.route({
+    method: 'GET',
+    path: '/publish/topics',
+    handler: function (request, reply) {
+
+        var sns = new AWS.SNS();
+        var params = {};
+
+        sns.listTopics(params, function (error, data) {
+            if (error) {
+                console.log(error); // error is Response.error
+                reply("ERROR: " + error.message);
+            } else {
+                console.log(data); // data is Response.data
+                reply(data);
+            }
+        });
+
+    }
+});
+
+server.route({
+    method: 'GET',
+    path: '/publish/topics/{topicName}',
+    handler: function (request, reply) {
+
+        var sns = new AWS.SNS();
+        var params = {
+            TopicArn: 'arn:aws:sns:'
+            + config.awsAccountRegion + ':'
+            + config.awsAccountNumber + ':'
+            + request.params.topicName
+        };
+
+        sns.getTopicAttributes(params, function (error, data) {
+            if (error) {
+                console.log(error); // error is Response.error
+                reply("ERROR: " + error.message);
+            } else {
+                console.log(data); // data is Response.data
+                reply(data);
+            }
+        });
+
+    }
+});
+
+server.route({
+    method: 'POST',
+    path: '/publish/topics/{topicName}',
+    handler: function (request, reply) {
+
+        var sns = new AWS.SNS();
+        var params = {
+            Message: 'test-message',
+            TopicArn: 'arn:aws:sns:'
+            + config.awsAccountRegion + ':'
+            + config.awsAccountNumber + ':'
+            + request.params.topicName
+        };
+
+        sns.publish(params, function (error, data) {
+            if (error) {
+                console.log(error); // error is Response.error
+                reply("ERROR: " + error.message);
             } else {
                 console.log(data); // data is Response.data
                 reply(data);
