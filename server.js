@@ -4,7 +4,6 @@ var AWS = require('aws-sdk');
 var config = require('./config');
 
 AWS.config = {
-    apiVersion: config.awsSdkApiVersion,
     region: config.awsAccountRegion
 };
 
@@ -16,11 +15,11 @@ server.route({
     path: '/dynamo-test/tables',
     handler: function (request, reply) {
 
-        var dynamodb = new AWS.DynamoDB();
+        var dynamodb = new AWS.DynamoDB({apiVersion: config.awsDynamoDbSdkApiVersion});
 
         dynamodb.listTables(function (error, data) {
             if (error) {
-                console.log(error); // error is Response.error
+                console.log(error.message); // error is Response.error
             } else {
                 console.log(data); // data is Response.data
                 reply(data);
@@ -35,12 +34,12 @@ server.route({
     path: '/publish/topics',
     handler: function (request, reply) {
 
-        var sns = new AWS.SNS();
+        var sns = new AWS.SNS({apiVersion: config.awsSnsApiVersion});
         var params = {};
 
         sns.listTopics(params, function (error, data) {
             if (error) {
-                console.log(error); // error is Response.error
+                console.log(error.message); // error is Response.error
                 reply("ERROR: " + error.message);
             } else {
                 console.log(data); // data is Response.data
@@ -53,10 +52,86 @@ server.route({
 
 server.route({
     method: 'GET',
+    path: '/queues',
+    handler: function (request, reply) {
+
+        var sqs = new AWS.SQS({apiVersion: config.awsSqsSdkApiVersion});
+        var params = {};
+
+        sqs.listQueues(params, function (error, data) {
+            if (error) {
+                console.log(error);
+                reply("ERROR: " + error.message);
+            } else {
+                console.log(data); // data is Response.data
+                reply(data);
+            }
+        });
+
+    }
+});
+
+server.route({
+    method: 'GET',
+    path: '/queues/{queueName}',
+    handler: function (request, reply) {
+
+        var deleteWork = request.query.delete == 'true';
+        var sqs = new AWS.SQS({apiVersion: config.awsSqsSdkApiVersion});
+        var queueUrl = 'https://sqs.'
+            + config.awsAccountRegion + '.amazonaws.com/'
+            + config.awsAccountNumber + '/'
+            + request.params.queueName;
+
+        var params = {
+            QueueUrl: queueUrl,
+            MaxNumberOfMessages: config.workQueueMaxNumberOfMessages,
+            VisibilityTimeout: config.workQueueVisibilityTimeout,
+            WaitTimeSeconds: config.workQueueWaitTime
+        };
+
+        sqs.receiveMessage(params, function (error, data) {
+            if (error) {
+                console.log(error);
+                reply("ERROR: " + error.message);
+            } else {
+                console.log(data);
+                if (deleteWork && data.Messages) {
+                    server.log('info', 'Deleting Work from queue...');
+                    var batchDelete = [];
+                    data.Messages.forEach(function (item) {
+                        batchDelete.push({
+                            Id: item.MessageId,
+                            ReceiptHandle: item.ReceiptHandle
+                        });
+                    });
+                    var params = {
+                        QueueUrl: queueUrl,
+                        Entries: batchDelete
+                    };
+                    server.log('info', params);
+                    sqs.deleteMessageBatch(params, function (err, data) {
+                        if (error) {
+                            console.log(error);
+                            reply("ERROR: " + error.message);
+                        } else {
+                            console.log(data); // successful response
+                        }
+                    });
+                }
+                reply(data);
+            }
+        });
+
+    }
+});
+
+server.route({
+    method: 'GET',
     path: '/publish/topics/{topicName}',
     handler: function (request, reply) {
 
-        var sns = new AWS.SNS();
+        var sns = new AWS.SNS({apiVersion: config.awsSnsApiVersion});
         var params = {
             TopicArn: 'arn:aws:sns:'
             + config.awsAccountRegion + ':'
@@ -82,7 +157,7 @@ server.route({
     path: '/publish/topics/{topicName}',
     handler: function (request, reply) {
 
-        var sns = new AWS.SNS();
+        var sns = new AWS.SNS({apiVersion: config.awsSnsApiVersion});
         var params = {
             Message: 'test-message',
             TopicArn: 'arn:aws:sns:'
@@ -109,7 +184,7 @@ server.route({
     path: '/dynamo-test/{guid}',
     handler: function (request, reply) {
 
-        var dynamodb = new AWS.DynamoDB();
+        var dynamodb = new AWS.DynamoDB({apiVersion: config.awsDynamoDbSdkApiVersion});
         var params = {
             Key: {
                 guid: {
@@ -142,7 +217,7 @@ server.route({
     method: 'PUT',
     path: '/dynamo-test',
     handler: function (request, reply) {
-        var dynamodb = new AWS.DynamoDB();
+        var dynamodb = new AWS.DynamoDB({apiVersion: config.awsDynamoDbSdkApiVersion});
 
         var graphId = request.payload.graphId ? request.params.graphId : 'NONE';
 
